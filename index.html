@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="referrer" content="no-referrer">
+  <title>Informe de predicación</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 16px; background: #f4f5f7; color: #1f2328;
+      font-family: -apple-system, "Segoe UI", Roboto, Arial, sans-serif; font-size: 16px; }
+    .tarjeta { max-width: 520px; margin: 0 auto; background: #fff; border-radius: 12px;
+      padding: 20px; box-shadow: 0 1px 3px rgba(0, 0, 0, .12); }
+    h1 { font-size: 20px; margin: 0 0 4px; }
+    .sub { color: #59636e; margin: 0 0 20px; }
+    label.campo { display: block; font-weight: 600; margin: 16px 0 6px; }
+    select, input[type=text], textarea { width: 100%; font-size: 16px; padding: 10px;
+      border: 1px solid #c8ccd1; border-radius: 8px; background: #fff; font-family: inherit; }
+    textarea { min-height: 80px; resize: vertical; }
+    .check { display: flex; align-items: center; gap: 10px; margin: 16px 0 0; font-weight: 600; }
+    .check input { width: 22px; height: 22px; }
+    .nota { font-size: 13px; color: #59636e; margin-top: 4px; }
+    .aviso { font-size: 13px; color: #8a4b00; background: #fff4e5; border-radius: 6px;
+      padding: 8px; margin-top: 6px; }
+    .etiqueta { display: inline-block; font-size: 13px; background: #e7f0ff; color: #0b4fb3;
+      border-radius: 999px; padding: 3px 10px; margin-top: 8px; }
+    .oculto { display: none; }
+    button { width: 100%; margin-top: 24px; padding: 14px; font-size: 17px; font-weight: 600;
+      color: #fff; background: #1a73e8; border: 0; border-radius: 8px; cursor: pointer; }
+    button:disabled { background: #9bbcf0; cursor: default; }
+    .mensaje { margin-top: 16px; padding: 12px; border-radius: 8px; }
+    .ok { background: #e6f4ea; color: #1e6b34; }
+    .error { background: #fdecea; color: #a1281b; }
+    .obligatorio { color: #a1281b; }
+  </style>
+</head>
+<body>
+  <div class="tarjeta">
+    <h1>Informe de predicación</h1>
+    <p class="sub" id="titulo">Cargando...</p>
+
+    <div id="cerrado" class="mensaje error oculto"></div>
+
+    <form id="formulario" class="oculto" autocomplete="off">
+      <label class="campo" for="nombre">Nombre del publicador</label>
+      <select id="nombre"></select>
+      <div id="tipo" class="etiqueta oculto"></div>
+
+      <div id="campos" class="oculto">
+        <div id="bloquePublicador">
+          <label class="check"><input type="checkbox" id="participo"> Participó en la predicación</label>
+        </div>
+
+        <label class="campo" for="cursos">Número de diferentes cursos bíblicos dirigidos</label>
+        <input type="text" id="cursos" inputmode="numeric" maxlength="4" placeholder="Opcional">
+
+        <div id="bloqueAuxiliar">
+          <label class="check"><input type="checkbox" id="auxiliar"> Fue precursor auxiliar este mes</label>
+        </div>
+
+        <div id="bloqueHoras" class="oculto">
+          <label class="campo" for="horas">Horas <span class="obligatorio">*</span></label>
+          <input type="text" id="horas" inputmode="numeric" maxlength="4">
+        </div>
+
+        <label class="campo" for="comentarios">Comentarios</label>
+        <textarea id="comentarios" maxlength="200" placeholder="Opcional"></textarea>
+        <div class="nota"><span id="contador">0</span> de 200 caracteres</div>
+        <div class="aviso">No escribas datos de salud ni información de otras personas.</div>
+
+        <button type="submit" id="enviar">Enviar informe</button>
+      </div>
+    </form>
+
+    <div id="mensaje" class="mensaje oculto"></div>
+  </div>
+
+  <script>
+    // Servicio de Apps Script que lee y guarda los datos (la hoja de cálculo no es pública).
+    var API = 'https://script.google.com/macros/s/AKfycbyS98W9muFcNhCb6zR1I1D1a9CHZhbyggtqo58TP8tKHmasnd9Yp3TOQfcpg0-k6ik/exec';
+    var CODIGO = new URLSearchParams(location.search).get('clave') || '';
+
+    // Pide datos al servicio sin enviar las cuentas de Google del navegador.
+    function llamar(pedido, alTerminar, alFallar) {
+      fetch(API, { method: 'POST', body: JSON.stringify(pedido), credentials: 'omit', redirect: 'follow' })
+        .then(function (r) { return r.json(); })
+        .then(function (r) { if (r.ok) alTerminar(r); else alFallar(new Error(r.error)); })
+        .catch(function () { alFallar(new Error('No hay conexión con el servicio. Revisa tu internet e intenta de nuevo.')); });
+    }
+    var personas = [];
+    var $ = function (id) { return document.getElementById(id); };
+
+    function mostrar(id, visible) { $(id).classList.toggle('oculto', !visible); }
+
+    function avisar(texto, tipo) {
+      var m = $('mensaje');
+      m.textContent = texto;
+      m.className = 'mensaje ' + tipo;
+      mostrar('mensaje', !!texto);
+    }
+
+    function llenarLista(lista) {
+      personas = lista;
+      var sel = $('nombre');
+      sel.innerHTML = '';
+      var primera = document.createElement('option');
+      primera.value = '';
+      primera.textContent = lista.length ? 'Elige un nombre' : 'No quedan nombres pendientes';
+      sel.appendChild(primera);
+      lista.forEach(function (p) {
+        var op = document.createElement('option');
+        op.value = p.nombre;
+        op.textContent = p.nombre;
+        sel.appendChild(op);
+      });
+      sel.disabled = lista.length === 0;
+      limpiarCampos();
+    }
+
+    function personaElegida() {
+      var nombre = $('nombre').value;
+      return personas.find(function (p) { return p.nombre === nombre; }) || null;
+    }
+
+    function limpiarCampos() {
+      $('participo').checked = false;
+      $('auxiliar').checked = false;
+      $('cursos').value = '';
+      $('horas').value = '';
+      $('comentarios').value = '';
+      $('contador').textContent = '0';
+      actualizarVista();
+    }
+
+    function actualizarVista() {
+      var p = personaElegida();
+      mostrar('campos', !!p);
+      mostrar('tipo', !!p && p.precursor);
+      $('tipo').textContent = 'Precursor';
+      if (!p) return;
+      var aux = $('auxiliar').checked;
+      mostrar('bloquePublicador', !p.precursor);
+      mostrar('bloqueAuxiliar', !p.precursor);
+      mostrar('bloqueHoras', p.precursor || aux);
+      if (!p.precursor && aux) $('participo').checked = true;
+      $('participo').disabled = !p.precursor && aux;
+    }
+
+    function soloNumero(texto) { return /^[0-9]{0,4}$/.test(texto); }
+
+    $('nombre').addEventListener('change', function () { avisar('', ''); limpiarCampos(); });
+    $('auxiliar').addEventListener('change', actualizarVista);
+    $('comentarios').addEventListener('input', function () {
+      $('contador').textContent = $('comentarios').value.length;
+    });
+
+    $('formulario').addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var p = personaElegida();
+      if (!p) { avisar('Elige un nombre.', 'error'); return; }
+      var cursos = $('cursos').value.trim();
+      var horas = $('horas').value.trim();
+      var pideHoras = p.precursor || $('auxiliar').checked;
+      if (!soloNumero(cursos)) { avisar('Los cursos bíblicos deben ser un número entero.', 'error'); return; }
+      if (pideHoras && horas === '') { avisar('Escribe las horas.', 'error'); return; }
+      if (pideHoras && !soloNumero(horas)) { avisar('Las horas deben ser un número entero.', 'error'); return; }
+
+      var datos = {
+        nombre: p.nombre,
+        participo: $('participo').checked,
+        auxiliar: !p.precursor && $('auxiliar').checked,
+        cursos: cursos,
+        horas: pideHoras ? horas : '',
+        comentarios: $('comentarios').value.trim(),
+      };
+      $('enviar').disabled = true;
+      $('enviar').textContent = 'Enviando...';
+      llamar({ accion: 'enviar', clave: CODIGO, datos: datos }, function (r) {
+          llenarLista(r.personas);
+          avisar('Informe de ' + r.registrado + ' guardado.' +
+            (r.personas.length ? ' Puedes elegir el siguiente nombre.' : ' Ya están todos los informes del grupo.'), 'ok');
+          $('enviar').disabled = false;
+          $('enviar').textContent = 'Enviar informe';
+          window.scrollTo(0, 0);
+        }, function (e) {
+          avisar(e.message || 'No se pudo guardar. Intenta de nuevo.', 'error');
+          $('enviar').disabled = false;
+          $('enviar').textContent = 'Enviar informe';
+        });
+    });
+
+    if (!/^[0-9a-f]{32}$/.test(CODIGO)) {
+      $('titulo').textContent = '';
+      $('cerrado').textContent = 'Este enlace no es válido. Pide el enlace correcto al secretario.';
+      mostrar('cerrado', true);
+    } else {
+      llamar({ accion: 'datos', clave: CODIGO }, function (d) {
+          $('titulo').textContent = d.grupo + ' · ' + d.mes;
+          mostrar('formulario', true);
+          llenarLista(d.personas);
+        }, function (e) {
+          $('titulo').textContent = '';
+          avisar(e.message || 'No se pudo cargar la lista.', 'error');
+        });
+    }
+  </script>
+</body>
+</html>
